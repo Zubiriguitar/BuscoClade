@@ -3,6 +3,7 @@ __author__ = "tomarovsky"
 from collections import defaultdict
 from Bio import SeqIO
 import argparse
+import tarfile
 
 
 def main():
@@ -14,6 +15,8 @@ def main():
     outfile = open(args.output, "w")
     for key, value in sequence_map.items():
         outfile.write(f">{key}\n{value}\n")
+        with tarfile.open("concatenated_fasta.tar.gz", 'w:gz') as tar:
+            tar.add(outfile.write(f">{key}\n{value}\n"))
     outfile.close()
 
 
