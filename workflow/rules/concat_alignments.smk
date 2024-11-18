@@ -17,7 +17,7 @@ rule concat_fasta_dna:
         time=config["processing_time"],
         mem_mb=config["processing_mem_mb"],
     shell:
-        " workflow/scripts/concat_fasta.py -i {input} -o {output} 1> {log.std} 2>&1; "
+        " workflow/scripts/concat_fasta.py -i {input} -o {output.fasta_file} -a {output.gz_archive} 1> {log.std} 2>&1; "
 
 
 rule concat_fasta_protein:

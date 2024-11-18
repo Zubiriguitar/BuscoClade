@@ -12,14 +12,21 @@ def main():
         for sequence in SeqIO.parse(i, "fasta"):
             sequence_map[sequence.name] += str(sequence.seq)
 
-    outfile = open(args.output, "w")
-    for key, value in sequence_map.items():
-        outfile.write(f">{key}\n{value}\n")
-    outfile.close()
+    #outfile = open(args.output, "w")
+    #for key, value in sequence_map.items():
+    #    outfile.write(f">{key}\n{value}\n")
+    #outfile.close()
 
-    with gzip.open(args.output, "wt") as gz_file:
+    gz_archive = gzip.open(args.archive, "wt") if args.archive else None
+    with open(args.output, "w") as output_file:
         for key, value in sequence_map.items():
-            gz_file.write(f">{key}\n{value}\n")
+            fasta_entry = f">{key}\n{value}\n"
+            output_file.write(fasta_entry)
+            if gz_archive:
+                gz_archive.write(fasta_entry)
+
+    if gz_archive:
+        gz_archive.close()
 
 
 if __name__ == "__main__":
