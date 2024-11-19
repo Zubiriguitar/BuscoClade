@@ -2,7 +2,8 @@ rule concat_fasta_dna:
     input:
         lambda w: expand_fna_from_merged_sequences(w, filtered_alignments_dir_path / "fna" / "{N}.fna"),
     output:
-        concat_alignments_dir_path / fasta_dna_filename,
+        fasta_file = concat_alignments_dir_path / fasta_dna_filename,
+        gz_archive = concat_alignments_dir_path / (fasta_dna_filename + ".gz"),
     log:
         std=log_dir_path / "concat_fasta_dna.log",
         cluster_log=cluster_log_dir_path / "concat_fasta_dna.cluster.log",
