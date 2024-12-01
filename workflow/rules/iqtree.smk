@@ -2,7 +2,7 @@ if config["iqtree_dna"]:
 
     rule iqtree_dna:
         input:
-            concat_alignments_dir_path / fasta_dna_filename,
+            archive=concat_alignments_dir_path / "concat_fasta.tar.gz",
         output:
             iqtree_dir_path / "fna" / f"{fasta_dna_filename}.bionj",
             iqtree_dir_path / "fna" / f"{fasta_dna_filename}.ckp.gz",
@@ -30,8 +30,9 @@ if config["iqtree_dna"]:
             mem_mb=config["iqtree_mem_mb"],
         threads: config["iqtree_threads"]
         shell:
+            "mkdir -p {params.outdir}"
             "tar -xOf {input.archive} '*.fasta' | cat > temp.fasta && "
-            " mkdir -p {params.outdir}; iqtree -nt {threads} -s temp.fasta "
+            " iqtree -nt {threads} -s temp.fasta "
             " --prefix {params.outdir}/{params.prefix} {params.options} 1> {log.std} 2>&1; "
             "rm temp.fasta"
 
