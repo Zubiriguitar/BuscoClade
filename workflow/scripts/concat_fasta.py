@@ -3,8 +3,8 @@ __author__ = "tomarovsky"
 from collections import defaultdict
 from Bio import SeqIO
 import argparse
-import gzip
-
+import tarfile
+import io
 
 def main():
     sequence_map = defaultdict(str)
@@ -12,21 +12,16 @@ def main():
         for sequence in SeqIO.parse(i, "fasta"):
             sequence_map[sequence.name] += str(sequence.seq)
 
-    #outfile = open(args.output, "w")
-    #for key, value in sequence_map.items():
-    #    outfile.write(f">{key}\n{value}\n")
-    #outfile.close()
+        with tarfile.open(args.output, "w:gz") as tar:
+            for seq_id, seq in sequence_map.items():
+                fasta_content = f">{seq_id}\n{seq}\n"
+                fasta_bytes = fasta_content.encode("utf-8")
+                
+                fasta_file = io.BytesIO(fasta_bytes)
+                info = tarfile.TarInfo(name=f"{seq_id}.fasta")
+                info.size = len(fasta_bytes)
 
-    gz_archive = gzip.open(args.archive, "wt") if args.archive else None
-    with open(args.output, "w") as output_file:
-        for key, value in sequence_map.items():
-            fasta_entry = f">{key}\n{value}\n"
-            output_file.write(fasta_entry)
-            if gz_archive:
-                gz_archive.write(fasta_entry)
-
-    if gz_archive:
-        gz_archive.close()
+                tar.addfile(tarinfo=info, fileobj=fasta_file)
 
 
 if __name__ == "__main__":

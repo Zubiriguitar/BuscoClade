@@ -2,11 +2,26 @@
 __author__ = 'tomarovsky'
 from Bio import SeqIO
 import argparse
+import tarfile
+import io
+
+def extract(archive_path):
+    fasta_content = ""
+    
+    with tarfile.open(archive_path, "r:gz") as tar:
+        for member in tar.getmembers():
+            if member.isfile() and member.name.endswith(".fasta"):
+                with tar.extractfile(member) as fasta_file:
+                    fasta_content += fasta_file.read().decode("utf-8")
+    return fasta_content
 
 
 def main():
-    records = SeqIO.parse(args.input, "fasta")
-    count = SeqIO.write(records, args.output, "stockholm")
+    fasta_content = extract(args.input)
+
+    records = SeqIO.parse(io.StringIO(fasta_content), "fasta")
+    SeqIO.write(records, args.output, "stockholm")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="script for converting FASTA format to Stockholm format")

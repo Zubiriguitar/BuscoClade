@@ -2,23 +2,23 @@ rule concat_fasta_dna:
     input:
         lambda w: expand_fna_from_merged_sequences(w, filtered_alignments_dir_path / "fna" / "{N}.fna"),
     output:
-        fasta_file = concat_alignments_dir_path / fasta_dna_filename,
-        gz_archive = concat_alignments_dir_path / (fasta_dna_filename + ".gz"),
+        archive=concat_alignments_dir_path / "concat_fasta.tar.gz",
     log:
         std=log_dir_path / "concat_fasta_dna.log",
         cluster_log=cluster_log_dir_path / "concat_fasta_dna.cluster.log",
         cluster_err=cluster_log_dir_path / "concat_fasta_dna.cluster.err",
     benchmark:
-        benchmark_dir_path / "concat_fasta_dna.benchmark.txt"
+        benchmark_dir_path / "concat_fasta_dna.benchmark.txt",
     conda:
-        "../../%s" % config["conda_config"]
+        "../../%s" % config["conda_config"],
     resources:
         queue=config["processing_queue"],
         cpus=config["processing_threads"],
         time=config["processing_time"],
         mem_mb=config["processing_mem_mb"],
     shell:
-        " workflow/scripts/concat_fasta.py -i {input} -o {output.fasta_file} -a {output.gz_archive} 1> {log.std} 2>&1; "
+        "workflow/scripts/concat_fasta.py -i {input} -o {output.archive} 1> {log.std} 2>&1; "
+
 
 
 rule concat_fasta_protein:
@@ -45,29 +45,19 @@ rule concat_fasta_protein:
 
 rule concat_nexus_dna:
     input:
-        rules.concat_fasta_dna.output,
+        archive=concat_alignments_dir_path / "concat_fasta.tar.gz",
     output:
-        concat_alignments_dir_path / nexus_dna_filename,
-    params:
-        type="DNA",
-        block=config["mrbayes_block"],
+        concat_alignments_dir_path / "output_nexus_file",
     log:
         std=log_dir_path / "concat_nexus_dna.log",
         cluster_log=cluster_log_dir_path / "concat_nexus_dna.cluster.log",
         cluster_err=cluster_log_dir_path / "concat_nexus_dna.cluster.err",
     benchmark:
-        benchmark_dir_path / "concat_nexus_dna.benchmark.txt"
+        benchmark_dir_path / "concat_nexus_dna.benchmark.txt",
     conda:
-        "../../%s" % config["conda_config"]
-    resources:
-        queue=config["processing_queue"],
-        cpus=config["processing_threads"],
-        time=config["processing_time"],
-        mem_mb=config["processing_mem_mb"],
+        "../../%s" % config["conda_config"],
     shell:
-        " workflow/scripts/fasta_to_nexus.py -i {input} "
-        " -t {params.type} -b {params.block} -o {output} 1> {log.std} 2>&1; "
-
+        "workflow/scripts/fasta_to_nexus.py -i {input.archive} -o {output} -b workflow/blocks/mrbayes_block.txt 1> {log.std} 2>&1"
 
 rule concat_nexus_protein:
     input:
@@ -97,24 +87,19 @@ rule concat_nexus_protein:
 
 rule concat_stockholm_dna:
     input:
-        rules.concat_fasta_dna.output,
+        archive=concat_alignments_dir_path / "concat_fasta.tar.gz",
     output:
-        concat_alignments_dir_path / stockholm_dna_filename,
+        concat_alignments_dir_path / "output_stockholm_file",
     log:
         std=log_dir_path / "concat_stockholm_dna.log",
         cluster_log=cluster_log_dir_path / "concat_stockholm_dna.cluster.log",
         cluster_err=cluster_log_dir_path / "concat_stockholm_dna.cluster.err",
     benchmark:
-        benchmark_dir_path / "concat_stockholm_dna.benchmark.txt"
+        benchmark_dir_path / "concat_stockholm_dna.benchmark.txt",
     conda:
-        "../../%s" % config["conda_config"]
-    resources:
-        queue=config["processing_queue"],
-        cpus=config["processing_threads"],
-        time=config["processing_time"],
-        mem_mb=config["processing_mem_mb"],
+        "../../%s" % config["conda_config"],
     shell:
-        " workflow/scripts/fasta_to_stockholm.py -i {input} -o {output} 1> {log.std} 2>&1 "
+        "workflow/scripts/fasta_to_stockholm.py -i {input.archive} -o {output} 1> {log.std} 2>&1"
 
 
 rule concat_stockholm_protein:
@@ -141,27 +126,20 @@ rule concat_stockholm_protein:
 
 rule concat_phylip_dna:
     input:
-        rules.concat_fasta_dna.output,
+        archive=concat_alignments_dir_path / "concat_fasta.tar.gz",
     output:
-        concat_alignments_dir_path / phylip_dna_filename,
-    params:
-        type="DNA",
+        concat_alignments_dir_path / "output_phylip_file",
     log:
         std=log_dir_path / "concat_phylip_dna.log",
         cluster_log=cluster_log_dir_path / "concat_phylip_dna.cluster.log",
         cluster_err=cluster_log_dir_path / "concat_phylip_dna.cluster.err",
     benchmark:
-        benchmark_dir_path / "concat_phylip_dna.benchmark.txt"
+        benchmark_dir_path / "concat_phylip_dna.benchmark.txt",
     conda:
-        "../../%s" % config["conda_config"]
-    resources:
-        queue=config["processing_queue"],
-        cpus=config["processing_threads"],
-        time=config["processing_time"],
-        mem_mb=config["processing_mem_mb"],
+        "../../%s" % config["conda_config"],
     shell:
-        " workflow/scripts/fasta_to_phylip.py -i {input} "
-        " -t {params.type} -o {output} 1> {log.std} 2>&1; "
+        "workflow/scripts/fasta_to_phylip.py -i {input.archive} -o {output} 1> {log.std} 2>&1"
+
 
 
 rule concat_phylip_protein:

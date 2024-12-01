@@ -30,8 +30,10 @@ if config["iqtree_dna"]:
             mem_mb=config["iqtree_mem_mb"],
         threads: config["iqtree_threads"]
         shell:
-            " mkdir -p {params.outdir}; iqtree -nt {threads} -s {input} "
+            "tar -xOf {input.archive} '*.fasta' | cat > temp.fasta && "
+            " mkdir -p {params.outdir}; iqtree -nt {threads} -s temp.fasta "
             " --prefix {params.outdir}/{params.prefix} {params.options} 1> {log.std} 2>&1; "
+            "rm temp.fasta"
 
 
 if config["iqtree_protein"]:

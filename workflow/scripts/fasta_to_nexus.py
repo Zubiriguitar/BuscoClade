@@ -3,11 +3,24 @@ __author__ = "tomarovsky"
 from Bio import AlignIO
 from sys import stdin
 import argparse
+import tarfile
+import io
 
+def extract(archive_path):
+    fasta_content = ""
+    
+    with tarfile.open(archive_path, "r:gz") as tar:
+        for member in tar.getmembers():
+            if member.isfile() and member.name.endswith(".fasta"):
+                with tar.extractfile(member) as fasta_file:
+                    fasta_content += fasta_file.read().decode("utf-8")
+    return fasta_content
 
 def main():
+    fasta_content = extract(args.input)
+
     with open(args.output, "a") as outfile, open(args.block, "r") as blockfile:
-        AlignIO.convert(args.input, "fasta", outfile, "nexus", args.type)
+        AlignIO.convert(io.StringIO(fasta_content), "fasta", outfile, "nexus", args.type)
         outfile.write("\n")
         for line in blockfile:
             outfile.write(line)
