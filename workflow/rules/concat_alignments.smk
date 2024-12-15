@@ -90,7 +90,7 @@ rule concat_nexus_protein:
         mem_mb=config["processing_mem_mb"],
     shell:
          "tar -xOf {input} '*.faa' | workflow/scripts/fasta_to_nexus.py -i"
-        " -t {params.type} -b {params.block} -o {output} 1> {log.std} 2>&1; "
+         " -t {params.type} -b {params.block} -o {output} 1> {log.std} 2>&1; "
 
 
 rule concat_stockholm_dna:
