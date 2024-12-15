@@ -30,9 +30,7 @@ if config["iqtree_dna"]:
             mem_mb=config["iqtree_mem_mb"],
         threads: config["iqtree_threads"]
         shell:
-            "mkdir -p {params.outdir}"
-            "tar -xOf {input.archive} '*.fasta' | cat > temp.fasta && "
-            " iqtree -nt {threads} -s temp.fasta "
+            "mkdir -p {params.outdir}; tar -xOf {input.archive} '*.fasta' | cat > temp.fasta &&  iqtree -nt {threads} -s temp.fasta "
             " --prefix {params.outdir}/{params.prefix} {params.options} 1> {log.std} 2>&1; "
             "rm temp.fasta"
 
@@ -41,7 +39,7 @@ if config["iqtree_protein"]:
 
     rule iqtree_protein:
         input:
-            concat_alignments_dir_path / fasta_protein_filename,
+            archive=concat_alignments_dir_path / "concat_fasta_protein.tar.gz",
         output:
             iqtree_dir_path / "faa" / f"{fasta_protein_filename}.bionj",
             iqtree_dir_path / "faa" / f"{fasta_protein_filename}.ckp.gz",
@@ -69,5 +67,6 @@ if config["iqtree_protein"]:
             mem_mb=config["iqtree_mem_mb"],
         threads: config["iqtree_threads"]
         shell:
-            " mkdir -p {params.outdir}; iqtree -nt {threads} -s {input} "
+            "mkdir -p {params.outdir}; tar -xOf {input.archive} '*.fasta' | cat > temp.fasta &&  iqtree -nt {threads} -s temp.fasta "
             " --prefix {params.outdir}/{params.prefix} {params.options} 1> {log.std} 2>&1; "
+            "rm temp.fasta"
