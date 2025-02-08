@@ -139,12 +139,6 @@ localrules:
 
 rule all:
     input:
-        concat_alignments_dir_path / "concat_fasta_dna.tar.gz",
-        concat_alignments_dir_path / "concat_fasta_protein.tar.gz",
-        concat_alignments_dir_path / "output_nexus_file",
-        concat_alignments_dir_path / "output_nexus_protein_file",
-        iqtree_dir_path / "fna" / "iqtree.treefile",
-        iqtree_dir_path / "faa" / "iqtree_protein.treefile",
         output_files,
 
 
