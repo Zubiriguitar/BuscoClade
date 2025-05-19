@@ -2,13 +2,13 @@ if config["raxml"]:
 
     rule raxml_tree:
         input:
-            concat_alignments_dir_path / fasta_dna_filename,
+            concat_alignments_dir_path / fasta_dna_filename
         output:
             raxml_dir_path / f"{fasta_dna_filename}.raxml.bestTree",
             raxml_dir_path / f"{fasta_dna_filename}.raxml.log",
             raxml_dir_path / f"{fasta_dna_filename}.raxml.rba",
-            raxml_dir_path / f"{fasta_dna_filename}.raxml.support",
-        params:
+            raxml_dir_path / f"{fasta_dna_filename}.raxml.support"
+        params: 
             options=config["raxml_params"],
             outdir=raxml_dir_path,
             prefix=fasta_dna_filename,
@@ -19,7 +19,7 @@ if config["raxml"]:
         benchmark:
             benchmark_dir_path / "raxml.benchmark.txt",
         conda:
-            "../../%s" % config["conda_config"],
+            config["conda"]["buscoclade_main"]["name"] if config["use_existing_envs"] else ("../../%s" % config["conda"]["buscoclade_main"]["yaml"])
         resources:
             queue=config["raxml_queue"],
             cpus=config["raxml_threads"],
@@ -44,7 +44,7 @@ if config["raxml"]:
         benchmark:
             benchmark_dir_path / "raxml.benchmark.txt",
         conda:
-            "../../%s" % config["conda_config"],
+            config["conda"]["buscoclade_main"]["name"] if config["use_existing_envs"] else ("../../%s" % config["conda"]["buscoclade_main"]["yaml"])
         resources:
             queue=config["raxml_queue"],
             cpus=config["raxml_threads"],

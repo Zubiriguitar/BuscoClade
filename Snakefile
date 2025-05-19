@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+import subprocess
+import pandas as pd
 
 
 # ---- Setup config ----
@@ -7,13 +9,19 @@ configfile: "config/default.yaml"
 
 
 # ---- Setup paths ----
-cluster_log_dir_path = Path(config["cluster_log_dir"])
+# -- Input --
 genome_dir_path = Path(config["genome_dir"]).resolve()
-log_dir_path = Path(config["log_dir"])
-benchmark_dir_path = Path(config["benchmark_dir"])
-output_dir_path = Path(config["output_dir"])
+vcf_reconstruct_dir_path = Path(config["vcf_reconstruct_dir"]).resolve()
 
+# -- Logs and benchmarks --
+cluster_log_dir_path = Path(config["cluster_log_dir"]).resolve()
+log_dir_path = Path(config["log_dir"]).resolve()
+benchmark_dir_path = Path(config["benchmark_dir"]).resolve()
+output_dir_path = Path(config["output_dir"]).resolve()
+
+# -- Results --
 quastcore_dir_path = output_dir_path / config["quastcore_dir"]
+altref_dir_path = output_dir_path / config["altref_dir"]
 busco_dir_path = output_dir_path / config["busco_dir"]
 species_ids_dir_path = output_dir_path / config["species_ids_dir"]
 common_ids_dir_path = output_dir_path / config["common_ids_dir"]
@@ -28,9 +36,6 @@ rapidnj_dir_path = output_dir_path / config["rapidnj_dir"]
 phylip_dir_path = output_dir_path / config["phylip_dir"]
 raxml_dir_path = output_dir_path / config["raxml_dir"]
 
-if "species_list" not in config:
-    config["species_list"] = [f.stem for f in genome_dir_path.iterdir() if f.is_file() and f.suffix == ".fasta"]
-
 # ---- Setup filenames ----
 fasta_dna_filename = "{}.fna".format(config["alignment_file_prefix"])
 fasta_protein_filename = "{}.faa".format(config["alignment_file_prefix"])
@@ -44,47 +49,186 @@ astral_input_trees = "{}.iqtree_per_fna.concat.treefile".format(config["alignmen
 astral_filtered_trees = "{0}.iqtree_per_fna.concat.{1}.treefile".format(config["alignment_file_prefix"], config["nodes_filtrataion_by_support"])
 astral_tree = "{0}.{1}.fna.astral.treefile".format(config["alignment_file_prefix"], config["nodes_filtrataion_by_support"])
 rapidnj_tree = "{}.fna.rapidnj.treefile".format(config["alignment_file_prefix"])
+rapidnj_matrix = "{}.fna.rapidnj.matrix".format(config["alignment_file_prefix"])
 phylip_tree = "{}.fna.phy.namefix.treefile".format(config["alignment_file_prefix"])
 raxml_tree = "{}.fna.raxml.treefile".format(config["alignment_file_prefix"])
 
 
 # ---- Necessary functions ----
-def expand_fna_from_merged_sequences(wildcards, template):
+"""def get_vcf_reconstruct_map(vcf_dir: Path) -> dict:
+    Returns a dictionary where keys are species names and values are dictionaries of VCF and FASTA files.
+    vcf_mapping = {}
+    for vcf_subdir in vcf_dir.iterdir():
+        if vcf_subdir.is_dir():
+            ref_files = list(vcf_subdir.glob("*.fasta"))
+            if not ref_files:
+                continue
+            ref_file = ref_files[0]
+            ref_prefix = ref_file.stem
+
+            for vcf_file in vcf_subdir.glob("*.vcf.gz"):
+                vcf_id = vcf_file.stem.split('.')[0]
+                alt_name = f"{vcf_id}.{ref_prefix}.AltRef"
+                vcf_mapping[alt_name] = {
+                    'vcf': vcf_file,
+                    'reference': ref_file
+                }
+    return vcf_mapping """
+
+def get_vcf_reconstruct_map(vcf_dir: Path) -> dict:
+    """Returns a dictionary where keys are species names and values are dictionaries of VCF and FASTA files."""
+    import gzip
+
+    vcf_mapping = {}
+    for vcf_subdir in vcf_dir.iterdir():
+        if vcf_subdir.is_dir():
+            
+            ref_files = list(vcf_subdir.glob("*.fasta"))
+
+            if not ref_files:
+                continue
+            vcf_mapping[vcf_subdir] = {}
+            ref_file = ref_files[0]
+            ref_prefix = ref_file.stem
+            
+            vcf_mapping[vcf_subdir]["reference_prefix"] = ref_prefix
+            vcf_mapping[vcf_subdir]["vcf_prefix_list"] = [vcf_file.name.replace(".vcf.gz", "") for vcf_file in vcf_subdir.glob("*.vcf.gz")]
+            vcf_mapping[vcf_subdir]["sample_dict"] = {}
+
+            for vcf_prefix in vcf_mapping[vcf_subdir]["vcf_prefix_list"]:
+                vcf_file = vcf_subdir / f"{vcf_prefix}.vcf.gz"
+
+                sample_names = []
+                with gzip.open(vcf_file, "rt") as f:
+                    for line in f:
+                        if line.startswith("#CHROM"):
+                            parts = line.strip().split("\t")
+                            sample_names = parts[9:]
+                            break
+
+                vcf_mapping[vcf_subdir]["sample_dict"][vcf_prefix] = sample_names
+
+    return vcf_mapping
+
+
+def vcf_species(vcf_reconstruct_map):
+    vcf_species_list = []
+    vcf_species_location_dict = {}
+    for vcf_subdir in vcf_reconstruct_map:
+        for vcf_prefix in vcf_reconstruct_map[vcf_subdir]['vcf_prefix_list']:
+            for sample_name in vcf_reconstruct_map[vcf_subdir]['sample_dict'][vcf_prefix]:
+                vcf_species_list.append(f"{sample_name}.{vcf_prefix}.{vcf_reconstruct_map[vcf_subdir]['reference_prefix']}")
+                vcf_species_location_dict[vcf_species_list[-1]] = vcf_subdir
+    return vcf_species_list, vcf_species_location_dict
+# altref_dir_path / "{sample}.{vcf_prefix}.{reference}.fasta",
+# {vcf_subfolder: {"vcf_prefix_list": [], "reference_prefix": "reference_prefix", "sample_dict": {"vcf_prefix": []}}, }
+#{"{sample}.{vcf_prefix}.{reference}": vcf_subfolder}
+
+
+def get_species_list(vcf_species: list, genome_species: list) -> list:
+    """Merges and returns final species list"""
+    return list(set(vcf_species + genome_species))
+
+
+def expand_fna_from_merged_sequences(wildcards, template, busco_blacklist=None):
     checkpoint_output = checkpoints.merged_sequences.get(**wildcards).output[0]
     N = glob_wildcards(os.path.join(checkpoint_output, "{N}.fna")).N
+    print(f"busco_blacklist: {busco_blacklist}")
+    print(f"Length of busco_blacklist: {len(N)}")
+    if busco_blacklist is not None:
+        N = set(N) - set(list(map(lambda s: f"{s}.merged", busco_blacklist)))
+    print(f"Length of final common_ids: {len(N)}")
     return expand(str(template), N=N)
 
 
-def expand_faa_from_merged_sequences(wildcards, template):
+def expand_faa_from_merged_sequences(wildcards, template, busco_blacklist=None):
     checkpoint_output = checkpoints.merged_sequences.get(**wildcards).output[0]
     N = glob_wildcards(os.path.join(checkpoint_output, "{N}.faa")).N
+    if busco_blacklist is not None:
+        N = set(N) - set(list(map(lambda s: f"{s}.merged", busco_blacklist)))
     return expand(str(template), N=N)
 
 
-# +-----------------+
-# |  the "All" rule |
-# +-----------------+
+# ------------------ TEMPORARY CODE!!!!!!!!!!!!! -----------------------
+# blacklist is applied at the concatenation stage
+busco_blacklist = None
+busco_blacklist_path = Path("input/BUSCO.blacklist")
+if busco_blacklist_path.exists() and (busco_blacklist_path.stat().st_size > 0):
+    busco_blacklist = pd.read_csv(busco_blacklist_path, sep="\t", header=None).squeeze()
+# ---------------------------------------------------------------------
 
-output_files = [
-    # ---- Busco ----
-    expand(busco_dir_path / "{species}/short_summary_{species}.txt", species=config["species_list"]),
-    # ---- Merge sequences with common ids ----
-    lambda w: expand_fna_from_merged_sequences(w, merged_sequences_dir_path / "{N}.fna"),
-    lambda w: expand_faa_from_merged_sequences(w, merged_sequences_dir_path / "{N}.faa"),
-    species_ids_dir_path / "unique_species_ids.png",
-    busco_dir_path / "busco_summaries.svg",
-]
+# ---- Input data ----
+genome_species = [f.stem for f in genome_dir_path.glob("*.fasta") if f.is_file()]
+vcf_reconstruct_map = get_vcf_reconstruct_map(vcf_reconstruct_dir_path)
+vcf_reconstruct_species, vcf_species_location_dict = vcf_species(vcf_reconstruct_map)
+
+
+if "species_list" not in config:
+    config["species_list"] = get_species_list(genome_species, vcf_reconstruct_species)
+    print(config["species_list"])
+
+
+# ---- "All" rule ----
+if config["vcf2phylip"] != True:
+    output_files = [
+        # ---- Busco ----
+        expand(busco_dir_path / "{species}/short_summary_{species}.txt", species=config["species_list"]),
+        # ---- Merge sequences with common ids ----
+        lambda w: expand_fna_from_merged_sequences(w, merged_sequences_dir_path / "{N}.fna", busco_blacklist=busco_blacklist),
+        lambda w: expand_faa_from_merged_sequences(w, merged_sequences_dir_path / "{N}.faa", busco_blacklist=busco_blacklist),
+        species_ids_dir_path / "unique_species_ids.png",
+        busco_dir_path / "busco_summaries.svg",
+    ]
+else:
+    output_files = []
+
+
+
+
+if "vcf2phylip" in config:
+    if config["vcf2phylip"]:
+        output_files.append(altref_dir_path / "consensus.fasta")
+        output_files.append(concat_alignments_dir_path / fasta_dna_filename)
+        if "iqtree_dna" in config:
+            if config["iqtree_dna"]:
+                output_files.append(iqtree_dir_path / "fna" / f"{fasta_dna_filename}.treefile")
+                if "draw_phylotrees" in config:
+                    if config["draw_phylotrees"]:
+                        output_files.append(iqtree_dir_path / "fna" / f"{fasta_dna_filename}.length_and_support_tree.png")
+            if config["rapidnj"]:
+                output_files.append(concat_alignments_dir_path / stockholm_dna_filename)
+                output_files.append(rapidnj_dir_path / rapidnj_tree)
+                if "draw_phylotrees" in config:
+                    if config["draw_phylotrees"]:
+                        output_files.append(rapidnj_dir_path / f"{fasta_dna_filename}.only_tree.png")
+        if "phylip" in config:
+            if config["phylip"]:
+                output_files.append(concat_alignments_dir_path / phylip_dna_filename)
+                output_files.append(phylip_dir_path / phylip_tree)
+                if "draw_phylotrees" in config:
+                    if config["draw_phylotrees"]:
+                        output_files.append(phylip_dir_path / f"{fasta_dna_filename}.only_tree.png")
+        if "raxml" in config:
+            if config["raxml"]:
+                output_files.append(raxml_dir_path / raxml_tree)
+                if "draw_phylotrees" in config:
+                    if config["draw_phylotrees"]:
+                        output_files.append(raxml_dir_path / f"{fasta_dna_filename}.only_tree.png")
+
 if "quastcore" in config:
     if config["quastcore"]:
         output_files.append(quastcore_dir_path / "assembly_stats.csv")
+
+
 if "dna_alignment" in config:
     if config["dna_alignment"]:
-        output_files.append(lambda w: expand_fna_from_merged_sequences(w, alignments_dir_path / "fna" / "{N}.fna"))
+        output_files.append(lambda w: expand_fna_from_merged_sequences(w, alignments_dir_path / "fna" / "{N}.fna", busco_blacklist=busco_blacklist))
         if "dna_filtration" in config:
             if config["dna_filtration"]:
-                output_files.append(lambda w: expand_fna_from_merged_sequences(w, filtered_alignments_dir_path / "fna" / "{N}.fna"))
+                output_files.append(
+                    lambda w: expand_fna_from_merged_sequences(w, filtered_alignments_dir_path / "fna" / "{N}.fna", busco_blacklist=busco_blacklist)
+                )
                 output_files.append(concat_alignments_dir_path / fasta_dna_filename)
-                output_files.append(concat_alignments_dir_path / nexus_dna_filename)
                 if "iqtree_dna" in config:
                     if config["iqtree_dna"]:
                         output_files.append(iqtree_dir_path / "fna" / f"{fasta_dna_filename}.treefile")
@@ -116,13 +260,16 @@ if "dna_alignment" in config:
                         output_files.append(raxml_dir_path / raxml_tree)
                         if "draw_phylotrees" in config:
                             if config["draw_phylotrees"]:
-                               output_files.append(raxml_dir_path / f"{fasta_dna_filename}.only_tree.png") #todo
+                               output_files.append(raxml_dir_path / f"{fasta_dna_filename}.only_tree.png")
+
 if "protein_alignment" in config:
     if config["protein_alignment"]:
         output_files.append(lambda w: expand_faa_from_merged_sequences(w, alignments_dir_path / "faa" / "{N}.faa"))
         if "protein_filtration" in config:
             if config["protein_filtration"]:
-                output_files.append(lambda w: expand_fna_from_merged_sequences(w, filtered_alignments_dir_path / "faa" / "{N}.faa"))
+                output_files.append(
+                    lambda w: expand_fna_from_merged_sequences(w, filtered_alignments_dir_path / "faa" / "{N}.faa", busco_blacklist=busco_blacklist)
+                )
                 output_files.append(concat_alignments_dir_path / fasta_protein_filename)
                 # output_files.append(concat_alignments_dir_path / nexus_protein_filename)
                 # output_files.append(concat_alignments_dir_path / stockholm_protein_filename)
@@ -132,10 +279,13 @@ if "protein_alignment" in config:
                         output_files.append(iqtree_dir_path / "faa" / f"{fasta_protein_filename}.treefile")
                         if "draw_phylotrees" in config:
                             if config["draw_phylotrees"]:
-                                output_files.append(iqtree_dir_path / "faa" / f"{fasta_protein_filename}.length_and_support_tree.png")
+                                output_files.append(iqtree_dir_path / "faa" / f"{fasta_protein_filename}.length_and_support_tree.svg")
+
 if "mrbayes_dna" in config:
-    if config["mrbayes_dna"]:  # to-do: upgrade
+    if config["mrbayes_dna"]:  # TODO: upgrade
+        output_files.append(concat_alignments_dir_path / nexus_dna_filename)
         output_files.append(mrbayes_dir_path / "fna")
+
 if "mrbayes_protein" in config:
     if config["mrbayes_protein"]:
         output_files.append(mrbayes_dir_path / "faa")
@@ -151,6 +301,7 @@ rule all:
 
 
 # ---- Load rules ----
+include: "workflow/rules/vcf_reconstruct.smk"
 include: "workflow/rules/quastcore.smk"
 include: "workflow/rules/busco.smk"
 include: "workflow/rules/common_ids.smk"
